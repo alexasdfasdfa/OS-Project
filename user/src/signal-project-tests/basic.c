@@ -46,6 +46,7 @@ void basic2(char* s) {
 }
 
 void handler3(int signo, siginfo_t* info, void* ctx2) {
+    printf("whywhwy%d\n",signo);
     assert(signo == SIGUSR0);
     getpid();
     sleep(1);
@@ -110,6 +111,7 @@ void basic4(char* s) {
 
 static volatile int handler5_cnt = 0;
 void handler5(int signo, siginfo_t* info, void* ctx2) {
+    printf("yyuyu%d\n",signo);
     assert(signo == SIGUSR0);
     static volatile int nonreentrace = 0;
     assert(!nonreentrace);    // non-reentrance

@@ -50,7 +50,7 @@ int do_signal(void) {
             if (sa->sa_sigaction == SIG_IGN) {
                 sigdelset(&p->signal.sigpending, sig);
             } else if (sa->sa_sigaction == SIG_DFL) {
-                p->killed = 1;
+                setkilled(p,-10-sig);
                 sigdelset(&p->signal.sigpending, sig);
             } else {
                 struct trapframe *tf = p->trapframe;
@@ -96,6 +96,7 @@ int do_signal(void) {
 
                 
                 tf->epc = (uint64)sa->sa_sigaction;
+                printf("sig is %d\n",sig);
                 tf->a0 = sig;
                 tf->a1 = (uint64)&p->signal.siginfos[sig];
                 tf->a2 = (uint64)&uc;
@@ -133,7 +134,6 @@ int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *
     acquire(&p->lock);
     release(&p->mm->lock);
     release(&p->lock);
-    do_signal();
     
     return 0;
 }
@@ -228,6 +228,8 @@ int sys_sigreturn() {
     
     
     p->signal.sigmask = uc->uc_sigmask;
+    // sigdelset(&p->signal.sigmask, uc->uc_mcontext.regs[10]);
+    printf("right now %d\n",tf->a0);
 
     // 恢复用户栈指针
     tf->sp = (uint64)uc + sizeof(struct ucontext) + sizeof(siginfo_t);
@@ -273,14 +275,72 @@ int sys_sigkill(int pid, int signo, int code) {
         p = pool[i];
         if (p->pid==pid)
         {
-            if(p->signal.sa[signo].sa_sigaction!=SIG_IGN){
+            p->signal.siginfos[signo].si_code=code;
+            // break;
+            sigaction_t *sa =&p->signal.sa[signo];
+            if (sa->sa_sigaction == SIG_IGN) {
+                sigdelset(&p->signal.sigpending, i);
+                
+            } else if (sa->sa_sigaction == SIG_DFL) {
                 setkilled(p,-10-signo);
-                p->signal.siginfos[signo].si_code=code;
-                break;
+                sigdelset(&p->signal.sigpending, signo);
+                
+            } else {
+                
+                struct trapframe *tf = p->trapframe;
+                struct ucontext uc;
+                uc.uc_mcontext.epc = tf->epc;
+                // memcpy(uc.uc_mcontext.regs, tf->regs, sizeof(uint64)*31);
+                uc.uc_mcontext.regs[0]  = tf->ra;
+                uc.uc_mcontext.regs[1]  = tf->sp;
+                uc.uc_mcontext.regs[2]  = tf->gp;
+                uc.uc_mcontext.regs[3]  = tf->tp;
+                uc.uc_mcontext.regs[4]  = tf->t0;
+                uc.uc_mcontext.regs[5]  = tf->t1;
+                uc.uc_mcontext.regs[6]  = tf->t2;
+                uc.uc_mcontext.regs[7]  = tf->s0;
+                uc.uc_mcontext.regs[8]  = tf->s1;
+                uc.uc_mcontext.regs[9]  = tf->a0;
+                uc.uc_mcontext.regs[10] = tf->a1;
+                uc.uc_mcontext.regs[11] = tf->a2;
+                uc.uc_mcontext.regs[12] = tf->a3;
+                uc.uc_mcontext.regs[13] = tf->a4;
+                uc.uc_mcontext.regs[14] = tf->a5;
+                uc.uc_mcontext.regs[15] = tf->a6;
+                uc.uc_mcontext.regs[16] = tf->a7;
+                uc.uc_mcontext.regs[17] = tf->s2;
+                uc.uc_mcontext.regs[18] = tf->s3;
+                uc.uc_mcontext.regs[19] = tf->s4;
+                uc.uc_mcontext.regs[20] = tf->s5;
+                uc.uc_mcontext.regs[21] = tf->s6;
+                uc.uc_mcontext.regs[22] = tf->s7;
+                uc.uc_mcontext.regs[23] = tf->s8;
+                uc.uc_mcontext.regs[24] = tf->s9;
+                uc.uc_mcontext.regs[25] = tf->s10;
+                uc.uc_mcontext.regs[26] = tf->s11;
+                uc.uc_mcontext.regs[27] = tf->t3;
+                uc.uc_mcontext.regs[28] = tf->t4;
+                uc.uc_mcontext.regs[29] = tf->t5;
+                uc.uc_mcontext.regs[30] = tf->t6;
+
+
+                uc.uc_sigmask = p->signal.sigmask;
+
+                
+                tf->epc = (uint64)sa->sa_sigaction;
+                tf->a0 = signo;
+                tf->a1 = (uint64)&p->signal.siginfos[signo];
+                tf->a2 = (uint64)&uc;
+
+                
+                p->signal.sigmask |= sa->sa_mask;
+                sigdelset(&p->signal.sigpending, signo);
             }
+            break;
             
         }
         
     }
     return 0;
+
 }
