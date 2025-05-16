@@ -22,7 +22,6 @@ void basic1(char* s) {
 // send SIGUSR0 to a child process, but should be ignored.
 void basic2(char* s) {
     int pid = fork();
-    printf("pass basic 1 \n");
     if (pid == 0) {
         // child
         sigaction_t sa = {
@@ -30,9 +29,7 @@ void basic2(char* s) {
             .sa_mask      = 0,
             .sa_restorer  = NULL,
         };
-        printf("here\n");
         sigaction(SIGUSR0, &sa, 0);
-        printf("yes pass\n");
         sleep(10);
         sleep(10);
         sleep(10);
@@ -43,6 +40,7 @@ void basic2(char* s) {
         sigkill(pid, SIGUSR0, 0);
         int ret;
         wait(0, &ret);
+        printf("wgtwtw%d\n",ret);
         assert(ret == 1);
     }
 }

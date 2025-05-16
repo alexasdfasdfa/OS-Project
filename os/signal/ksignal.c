@@ -47,7 +47,6 @@ int do_signal(void) {
         if (sigismember(&p->signal.sigpending, sig) && 
             !sigismember(&p->signal.sigmask, sig)) {
             sigaction_t *sa = &p->signal.sa[sig];
-            
             if (sa->sa_sigaction == SIG_IGN) {
                 sigdelset(&p->signal.sigpending, sig);
             } else if (sa->sa_sigaction == SIG_DFL) {
@@ -116,18 +115,25 @@ int do_signal(void) {
 
 int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *oldact) {
     struct proc *p =curr_proc();
+    acquire(&p->lock);
+    acquire(&p->mm->lock);
+    release(&p->lock);
     if(oldact){
-        memmove(oldact, &p->signal.sa[signo], sizeof(sigaction_t));
+        copy_to_user(p->mm,(uint64)oldact,(char*)&p->signal.sa[signo],sizeof(sigaction_t));
     }
-    
-
     if(act){
-        sigaction_t new_sa = *act;
-        // copy_from_user(&new_sa, act, sizeof(sigaction_t));
+        sigaction_t new_act;
         
-        memmove(&p->signal.sa[signo], &new_sa, sizeof(sigaction_t));
+        copy_from_user(p->mm,(char*)&new_act,(uint64)act,sizeof(sigaction_t));
+        memmove(&p->signal.sa[signo],&new_act,sizeof(sigaction_t));
+        
+        
         
     }
+    acquire(&p->lock);
+    release(&p->mm->lock);
+    release(&p->lock);
+    do_signal();
     
     return 0;
 }
@@ -267,14 +273,14 @@ int sys_sigkill(int pid, int signo, int code) {
         p = pool[i];
         if (p->pid==pid)
         {
-            setkilled(p,-10-signo);
-            p->signal.siginfos[signo].si_code=code;
-            break;
+            if(p->signal.sa[signo].sa_sigaction!=SIG_IGN){
+                setkilled(p,-10-signo);
+                p->signal.siginfos[signo].si_code=code;
+                break;
+            }
+            
         }
         
     }
-    // printf("%d\n",code);
-    
-    // p->signal.siginfos->si_signo=signo;
     return 0;
 }
