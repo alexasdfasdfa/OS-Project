@@ -12,6 +12,17 @@
  */
 int siginit(struct proc *p) {
     // init p->signal
+    for (int sig = SIGMIN; sig <= SIGMAX; sig++) {
+        p->signal.sa[sig].sa_sigaction = SIG_DFL; // 默认处理
+        sigemptyset(&p->signal.sa[sig].sa_mask); 
+        p->signal.sa[sig].sa_restorer = NULL;
+    }
+
+    sigemptyset(&p->signal.sigmask);
+    sigemptyset(&p->signal.sigpending);
+
+    memset(p->signal.siginfos, 0, sizeof(siginfo_t) * (SIGMAX + 1));
+    
     return 0;
 }
 
@@ -28,18 +39,75 @@ int siginit_exec(struct proc *p) {
 }
 
 int do_signal(void) {
-    assert(!intr_get());
     struct proc *p = curr_proc();
-    if (p->signal.sigpending)
-    {
-        if (!p->signal.sigmask)
-        {
-            SIG_DFL;
-        }
-        
-    }
-    
+    if (!p->signal.sigpending) return 0;
 
+    // 遍历所有可能的信号
+    for (int sig = SIGMIN; sig <= SIGMAX; sig++) {
+        if (sigismember(&p->signal.sigpending, sig) && 
+            !sigismember(&p->signal.sigmask, sig)) {
+            sigaction_t *sa = &p->signal.sa[sig];
+            
+            if (sa->sa_sigaction == SIG_IGN) {
+                sigdelset(&p->signal.sigpending, sig);
+            } else if (sa->sa_sigaction == SIG_DFL) {
+                p->killed = 1;
+                sigdelset(&p->signal.sigpending, sig);
+            } else {
+                struct trapframe *tf = p->trapframe;
+
+                
+                struct ucontext uc;
+                uc.uc_mcontext.epc = tf->epc;
+                // memcpy(uc.uc_mcontext.regs, tf->regs, sizeof(uint64)*31);
+                uc.uc_mcontext.regs[0]  = tf->ra;
+                uc.uc_mcontext.regs[1]  = tf->sp;
+                uc.uc_mcontext.regs[2]  = tf->gp;
+                uc.uc_mcontext.regs[3]  = tf->tp;
+                uc.uc_mcontext.regs[4]  = tf->t0;
+                uc.uc_mcontext.regs[5]  = tf->t1;
+                uc.uc_mcontext.regs[6]  = tf->t2;
+                uc.uc_mcontext.regs[7]  = tf->s0;
+                uc.uc_mcontext.regs[8]  = tf->s1;
+                uc.uc_mcontext.regs[9]  = tf->a0;
+                uc.uc_mcontext.regs[10] = tf->a1;
+                uc.uc_mcontext.regs[11] = tf->a2;
+                uc.uc_mcontext.regs[12] = tf->a3;
+                uc.uc_mcontext.regs[13] = tf->a4;
+                uc.uc_mcontext.regs[14] = tf->a5;
+                uc.uc_mcontext.regs[15] = tf->a6;
+                uc.uc_mcontext.regs[16] = tf->a7;
+                uc.uc_mcontext.regs[17] = tf->s2;
+                uc.uc_mcontext.regs[18] = tf->s3;
+                uc.uc_mcontext.regs[19] = tf->s4;
+                uc.uc_mcontext.regs[20] = tf->s5;
+                uc.uc_mcontext.regs[21] = tf->s6;
+                uc.uc_mcontext.regs[22] = tf->s7;
+                uc.uc_mcontext.regs[23] = tf->s8;
+                uc.uc_mcontext.regs[24] = tf->s9;
+                uc.uc_mcontext.regs[25] = tf->s10;
+                uc.uc_mcontext.regs[26] = tf->s11;
+                uc.uc_mcontext.regs[27] = tf->t3;
+                uc.uc_mcontext.regs[28] = tf->t4;
+                uc.uc_mcontext.regs[29] = tf->t5;
+                uc.uc_mcontext.regs[30] = tf->t6;
+
+
+                uc.uc_sigmask = p->signal.sigmask;
+
+                
+                tf->epc = (uint64)sa->sa_sigaction;
+                tf->a0 = sig;
+                tf->a1 = (uint64)&p->signal.siginfos[sig];
+                tf->a2 = (uint64)&uc;
+
+                
+                p->signal.sigmask |= sa->sa_mask;
+                sigdelset(&p->signal.sigpending, sig);
+            }
+            break;
+        }
+    }
     return 0;
 }
 
@@ -47,9 +115,20 @@ int do_signal(void) {
 //  sys_* functions are called by syscall.c
 
 int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *oldact) {
-    oldact->sa_sigaction = act->sa_sigaction;
     struct proc *p =curr_proc();
-    memmove(&p->signal.sa[signo], act->sa_sigaction, sizeof(sigaction_t));
+    if(oldact){
+        memmove(oldact, &p->signal.sa[signo], sizeof(sigaction_t));
+    }
+    
+
+    if(act){
+        sigaction_t new_sa = *act;
+        // copy_from_user(&new_sa, act, sizeof(sigaction_t));
+        
+        memmove(&p->signal.sa[signo], &new_sa, sizeof(sigaction_t));
+        
+    }
+    
     return 0;
 }
 
@@ -150,11 +229,34 @@ int sys_sigreturn() {
 }
 
 int sys_sigprocmask(int how, const sigset_t __user *set, sigset_t __user *oldset) {
+    struct proc *p = curr_proc();
+    sigset_t new_mask, old_mask;
+
+    old_mask = p->signal.sigmask;
+
+    *oldset=old_mask;
+
+    
+    new_mask=*set;
+    
+
+    switch (how) {
+    case SIG_BLOCK:
+        p->signal.sigmask |= new_mask;  
+        break;
+    case SIG_UNBLOCK:
+        p->signal.sigmask &= ~new_mask; 
+        break;
+    case SIG_SETMASK:
+        p->signal.sigmask = new_mask;   
+        break;
+    }
+
     return 0;
 }
 
 int sys_sigpending(sigset_t __user *set) {
-    curr_proc()->signal.sigpending=set;
+    curr_proc()->signal.sigpending=*set;
     return 0;
 }
 
@@ -165,12 +267,14 @@ int sys_sigkill(int pid, int signo, int code) {
         p = pool[i];
         if (p->pid==pid)
         {
+            setkilled(p,-10-signo);
+            p->signal.siginfos[signo].si_code=code;
             break;
         }
         
     }
-    setkilled(p,code);
-    p->signal.siginfos[signo].si_code=code;
+    // printf("%d\n",code);
+    
     // p->signal.siginfos->si_signo=signo;
     return 0;
 }
