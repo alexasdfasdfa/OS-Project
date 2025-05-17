@@ -47,8 +47,7 @@ int do_signal(void) {
         if (sigismember(&p->signal.sigpending, sig) && 
             !sigismember(&p->signal.sigmask, sig)) {
             sigaction_t *sa = &p->signal.sa[sig];
-            sigset_t blocked = sa->sa_mask | sigmask(sig); // 当前信号 + sa_mask
-            p->signal.sigmask |= blocked;
+            
 
             if (sa->sa_sigaction == SIG_IGN) {
                 sigdelset(&p->signal.sigpending, sig);
@@ -58,6 +57,8 @@ int do_signal(void) {
             } else {
                 struct trapframe *tf = p->trapframe;
 
+                uint64 sp=tf->sp;
+                uint64 uc_addr = ROUNDUP_2N(sp+sizeof(siginfo_t),16);
                 
                 struct ucontext uc;
                 uc.uc_mcontext.epc = tf->epc;
@@ -99,16 +100,21 @@ int do_signal(void) {
 
                 
                 tf->epc = (uint64)sa->sa_sigaction;
-                printf("sig is %d\n",sig);
                 tf->a0 = sig;
                 tf->a1 = (uint64)&p->signal.siginfos[sig];
                 tf->a2 = (uint64)&uc;
                 tf->ra=(uint64)sa->sa_restorer;
+                tf->sp=sp;
+                acquire(&p->mm->lock);
+                copy_to_user(p->mm,uc_addr,(char*)&uc,sizeof(struct ucontext));
+                release(&p->mm->lock);
 
                 
-                p->signal.sigmask |= sa->sa_mask;
+                sigset_t blocked = sa->sa_mask | sigmask(sig); // 当前信号 + sa_mask
+                p->signal.sigmask |= blocked;
                 sigdelset(&p->signal.sigpending, sig);
-                
+                printf("stack pointer in do %d\n",tf->sp);
+                printf("signal function return %d\n",uc.uc_mcontext.regs[0]);
             }
             break;
         }
@@ -132,9 +138,7 @@ int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *
         
         copy_from_user(p->mm,(char*)&new_act,(uint64)act,sizeof(sigaction_t));
         memmove(&p->signal.sa[signo],&new_act,sizeof(sigaction_t));
-        
-        
-        
+
     }
     acquire(&p->lock);
     release(&p->mm->lock);
@@ -147,111 +151,59 @@ int sys_sigaction(int signo, const sigaction_t __user *act, sigaction_t __user *
     // return 0;
 // }
 int sys_sigreturn() {
-    printf("kadsooo\n");
     struct proc *p = curr_proc();
     struct trapframe *tf = p->trapframe;
-    struct ucontext *uc = (struct ucontext *)(tf->a2);
-    printf("iioooooooooooooooooooo\n");
-    // sigset_t blocked = p->signal.sa[tf->a0].sa_mask | sigmask(tf->a0); // 当前信号 + sa_mask
-    // p->signal.sigmask &= ~blocked;
-    // printf("zyyyyy %d\n",p->signal.sigmask);
+    struct ucontext uc;
+    acquire(&p->mm->lock);
 
-    // 恢复寄存器和sigmask
-    // if(uc->uc_mcontext.epc){
-    //     printf("aaaa----------------------------------------------\n");
-    // }
-    // struct mcontext tem_mcontext;
-    // copy_from_user(p->mm,(char*)&tf,(uint64)&uc->uc_mcontext,sizeof(mcontext));
-    tf->epc = uc->uc_mcontext.epc;
-    printf("asiop\n");
-    // printf("%d\n",uc->uc_mcontext.regs);
-    // memcpy(tf->regs, uc->uc_mcontext.regs, sizeof(uint64)*31);
-    tf->ra = uc->uc_mcontext.regs[0];
-    tf->sp = uc->uc_mcontext.regs[1];
-    tf->gp = uc->uc_mcontext.regs[2];
-    tf->tp = uc->uc_mcontext.regs[3];
-    tf->t0 = uc->uc_mcontext.regs[4];
-    tf->t1 = uc->uc_mcontext.regs[5];
-    tf->t2 = uc->uc_mcontext.regs[6];
-    tf->s0 = uc->uc_mcontext.regs[7];
-    tf->s1 = uc->uc_mcontext.regs[8];
-    tf->a0 = uc->uc_mcontext.regs[9];
-    tf->a1 = uc->uc_mcontext.regs[10];
-    tf->a2 = uc->uc_mcontext.regs[11];
-    tf->a3 = uc->uc_mcontext.regs[12];
-    tf->a4 = uc->uc_mcontext.regs[13];
-    tf->a5 = uc->uc_mcontext.regs[14];
-    tf->a6 = uc->uc_mcontext.regs[15];
-    tf->a7 = uc->uc_mcontext.regs[16];
-    tf->s2 = uc->uc_mcontext.regs[17];
-    tf->s3 = uc->uc_mcontext.regs[18];
-    tf->s4 = uc->uc_mcontext.regs[19];
-    tf->s5 = uc->uc_mcontext.regs[20];
-    tf->s6 = uc->uc_mcontext.regs[21];
-    tf->s7 = uc->uc_mcontext.regs[22];
-    tf->s8 = uc->uc_mcontext.regs[23];
-    tf->s9 = uc->uc_mcontext.regs[24];
-    tf->s10 = uc->uc_mcontext.regs[25];
-    tf->s11 = uc->uc_mcontext.regs[26];
-    tf->t3=uc->uc_mcontext.regs[27];
-    tf->t4=uc->uc_mcontext.regs[28];
-    tf->t5=uc->uc_mcontext.regs[29];
-    tf->t6 = uc->uc_mcontext.regs[30];  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    uint64 info_addr=tf->sp;
+    uint64 uc_addr = ROUNDUP_2N(info_addr+sizeof(siginfo_t),16);
+    copy_from_user(p->mm,(char*)&uc,uc_addr,sizeof(struct ucontext));
+    release(&p->mm->lock);
     
-    printf("======\n");
-    p->signal.sigmask = uc->uc_sigmask;
+    // struct ucontext *uc = (struct ucontext *)(tf->a2);
+
+    tf->epc = uc.uc_mcontext.epc;
+    tf->ra = uc.uc_mcontext.regs[0];
+    tf->sp = uc.uc_mcontext.regs[1];
+    tf->gp = uc.uc_mcontext.regs[2];
+    tf->tp = uc.uc_mcontext.regs[3];
+    tf->t0 = uc.uc_mcontext.regs[4];
+    tf->t1 = uc.uc_mcontext.regs[5];
+    tf->t2 = uc.uc_mcontext.regs[6];
+    tf->s0 = uc.uc_mcontext.regs[7];
+    tf->s1 = uc.uc_mcontext.regs[8];
+    tf->a0 = uc.uc_mcontext.regs[9];
+    tf->a1 = uc.uc_mcontext.regs[10];
+    tf->a2 = uc.uc_mcontext.regs[11];
+    tf->a3 = uc.uc_mcontext.regs[12];
+    tf->a4 = uc.uc_mcontext.regs[13];
+    tf->a5 = uc.uc_mcontext.regs[14];
+    tf->a6 = uc.uc_mcontext.regs[15];
+    tf->a7 = uc.uc_mcontext.regs[16];
+    tf->s2 = uc.uc_mcontext.regs[17];
+    tf->s3 = uc.uc_mcontext.regs[18];
+    tf->s4 = uc.uc_mcontext.regs[19];
+    tf->s5 = uc.uc_mcontext.regs[20];
+    tf->s6 = uc.uc_mcontext.regs[21];
+    tf->s7 = uc.uc_mcontext.regs[22];
+    tf->s8 = uc.uc_mcontext.regs[23];
+    tf->s9 = uc.uc_mcontext.regs[24];
+    tf->s10 = uc.uc_mcontext.regs[25];
+    tf->s11 = uc.uc_mcontext.regs[26];
+    tf->t3=uc.uc_mcontext.regs[27];
+    tf->t4=uc.uc_mcontext.regs[28];
+    tf->t5=uc.uc_mcontext.regs[29];
+    tf->t6 = uc.uc_mcontext.regs[30];  
+
+    p->signal.sigmask = uc.uc_sigmask;
     // sigdelset(&p->signal.sigmask, uc->uc_mcontext.regs[10]);
-    printf("right now %d\n",tf->a0);
 
 
 
-    // 恢复用户栈指针
-    tf->sp = (uint64)uc + sizeof(struct ucontext) + sizeof(siginfo_t);
-    printf("left now");
+    // tf->sp = uc_addr;
+    printf("stack pointer return %d\n",tf->sp);
+    printf("return function return %d\n",uc.uc_mcontext.regs[0]);
     return 0;
 }
 
