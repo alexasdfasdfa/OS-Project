@@ -57,8 +57,10 @@ int do_signal(void) {
             } else {
                 struct trapframe *tf = p->trapframe;
 
-                uint64 sp=tf->sp;
-                uint64 uc_addr = ROUNDUP_2N(sp+sizeof(siginfo_t),16);
+                uint64 sp=tf->sp-sizeof(struct ucontext);
+                uint64 info_addr = sp - sizeof(siginfo_t);
+                uint64 uc_addr = info_addr - sizeof(struct ucontext);
+                uc_addr = ROUNDUP_2N(uc_addr, 16);
                 
                 struct ucontext uc;
                 uc.uc_mcontext.epc = tf->epc;
@@ -104,7 +106,7 @@ int do_signal(void) {
                 tf->a1 = (uint64)&p->signal.siginfos[sig];
                 tf->a2 = (uint64)&uc;
                 tf->ra=(uint64)sa->sa_restorer;
-                tf->sp=sp;
+                tf->sp=uc_addr;
                 acquire(&p->mm->lock);
                 copy_to_user(p->mm,uc_addr,(char*)&uc,sizeof(struct ucontext));
                 release(&p->mm->lock);
@@ -156,9 +158,10 @@ int sys_sigreturn() {
     struct ucontext uc;
     acquire(&p->mm->lock);
 
-    uint64 info_addr=tf->sp;
-    uint64 uc_addr = ROUNDUP_2N(info_addr+sizeof(siginfo_t),16);
-    copy_from_user(p->mm,(char*)&uc,uc_addr,sizeof(struct ucontext));
+    // uint64 info_addr=tf->sp;
+    // uint64 uc_addr = ROUNDUP_2N(info_addr+sizeof(struct ucontext),16);
+    uint64 uc_addr = tf->sp;
+    copy_from_user(p->mm, (char*)&uc, uc_addr, sizeof(struct ucontext));
     release(&p->mm->lock);
     
     // struct ucontext *uc = (struct ucontext *)(tf->a2);
@@ -201,7 +204,7 @@ int sys_sigreturn() {
 
 
 
-    // tf->sp = uc_addr;
+    // tf->sp = info_addr;
     printf("stack pointer return %d\n",tf->sp);
     printf("return function return %d\n",uc.uc_mcontext.regs[0]);
     return 0;
@@ -235,7 +238,13 @@ int sys_sigprocmask(int how, const sigset_t __user *set, sigset_t __user *oldset
 }
 
 int sys_sigpending(sigset_t __user *set) {
-    curr_proc()->signal.sigpending=*set;
+    struct proc *p=curr_proc();
+    
+    acquire(&p->mm->lock);
+    printf("this?\n");
+    copy_to_user(p->mm,(uint64)set,(char*)&(p->signal.sigpending),sizeof(sigset_t));
+    printf("duuiui?\n");
+    release(&p->mm->lock);
     return 0;
 }
 
