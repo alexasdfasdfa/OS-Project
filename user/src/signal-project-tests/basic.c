@@ -40,13 +40,11 @@ void basic2(char* s) {
         sigkill(pid, SIGUSR0, 0);
         int ret;
         wait(0, &ret);
-        printf("wgtwtw%d\n",ret);
         assert(ret == 1);
     }
 }
 
 void handler3(int signo, siginfo_t* info, void* ctx2) {
-    printf("whywhwy%d\n",signo);
     assert(signo == SIGUSR0);
     getpid();
     sleep(1);
@@ -188,7 +186,6 @@ void basic6(char* s) {
         sigemptyset(&sa2.sa_mask);
         sigaction(SIGUSR1, &sa2, 0);
         while (handler6_flag != 3);
-        printf("ioaaqwwww\n");
         exit(106);
     } else {
         // parent
