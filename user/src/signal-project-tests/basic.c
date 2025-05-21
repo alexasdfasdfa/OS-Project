@@ -425,3 +425,11 @@ void basic20(char *s) {
         assert(ret == 1); // child should not be terminated by SIGUSR0
     }
 }
+
+// volatile void *fault_addr;
+// void *mapped_addr;
+// void segv_handler(int signo, siginfo_t* info, void* ctx2){
+//     fault_addr = info->addr;
+
+//     struct ucontext *uc = (struct ucontext *)ctx2;
+// }

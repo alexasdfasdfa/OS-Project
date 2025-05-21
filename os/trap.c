@@ -144,10 +144,14 @@ static void handle_pgfault(void) {
                 *pte |= PTE_D;    
             return;
         }
+    }else{
+        sigkill(getpid(), SIGSEGV, 0); 
+        return;
     }
     // otherwise, it is a page fault due to invalid address
-    infof("page fault in application, bad addr = %p, bad instruction = %p, core dumped.", r_stval(), p->trapframe->epc);
-    setkilled(p, -2);
+    // infof("page fault in application, bad addr = %p, bad instruction = %p, core dumped.", r_stval(), p->trapframe->epc);
+    // setkilled(p, -2);
+    
 }
 
 static void unknown_trap(void) {
