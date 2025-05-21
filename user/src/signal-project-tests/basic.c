@@ -1,6 +1,41 @@
 #include "../../os/ktest/ktest.h"
 #include "../lib/user.h"
 
+void handler21(int signo, siginfo_t* info, void* ctx2) {
+    assert(signo == SIGUSR0);
+    int sender_pid=info->si_pid;
+    int sig_no=info->si_signo;
+    printf("=====Show siginfo_t=====\n signo %d\nsender_pid %d\n",sig_no,sender_pid);
+    getpid();
+    sleep(1);
+    exit(103);
+}
+
+void basic21(char* s) {
+    int pid = fork();
+    if (pid == 0) {
+        // child
+        sigaction_t sa = {
+            .sa_sigaction = handler21,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa.sa_mask);
+        sigaction(SIGUSR0, &sa, 0);
+        while (1);
+        exit(1);
+    } else {
+        // parent
+        sleep(10);
+        int parent_pid=getpid();
+        int signo=SIGUSR0;
+        printf("pid %d send signal %d\n",parent_pid,signo);
+        sigkill(pid, signo, 0);
+        int ret;
+        wait(0, &ret);
+        assert_eq(ret, 103);
+    }
+}
+
 // Base Checkpoint 1: sigaction, sigkill, and sigreturn
 
 // send SIGUSR0 to a child process, which default action is to terminate it.

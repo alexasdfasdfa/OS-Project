@@ -116,12 +116,15 @@ int do_signal(void) {
                     
                     tf->epc = (uint64)sa->sa_sigaction;
                     tf->a0 = sig;
-                    tf->a1 = (uint64)&p->signal.siginfos[sig];
-                    tf->a2 = (uint64)&uc;
+                    tf->a1 = (uint64)info_addr;
+                    tf->a2 = (uint64)&uc_addr;
                     tf->ra=(uint64)sa->sa_restorer;
                     tf->sp=uc_addr;
+                    siginfo_t siginfo=p->signal.siginfos[sig];
+                    //pass siginfo struct and ucontext to user
                     acquire(&p->mm->lock);
                     copy_to_user(p->mm,uc_addr,(char*)&uc,sizeof(struct ucontext));
+                    copy_to_user(p->mm,info_addr,(char*)&siginfo,sizeof(siginfo_t));
                     release(&p->mm->lock);
     
                     
@@ -261,15 +264,26 @@ int sys_sigpending(sigset_t __user *set) {
 }
 
 int sys_sigkill(int pid, int signo, int code) {
+
     struct proc *p;
     for (int i = 0; i < NPROC; i++)
     {
         p = pool[i];
         if (p->pid==pid)
         {
-            p->signal.siginfos[signo].si_code=code;
+            //get the process who send the signal
+            struct proc *sender=curr_proc();
+            int sender_pid=-1;
+            if(sender){
+                sender_pid=sender->pid;
+            }
+            //set siginfo
+            //default:si_code=0 si_status=0 addr=0
+            p->signal.siginfos[signo].si_code=0;
+            p->signal.siginfos[signo].si_status=0;
+            p->signal.siginfos[signo].addr=0;
             p->signal.siginfos[signo].si_signo=signo;
-            p->signal.siginfos[signo].si_signo=pid;
+            p->signal.siginfos[signo].si_pid=sender_pid;
             sigaddset(&p->signal.sigpending, signo);
             break;
             // sigaction_t *sa =&p->signal.sa[signo];

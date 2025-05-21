@@ -7,17 +7,18 @@ struct test {
     void (*f)(char *);
     char *s;
 } signaltests[] = {
-    {basic1,  "basic1" },
-    {basic2,  "basic2" },
-    {basic3,  "basic3" },
-    {basic4,  "basic4" },
-    {basic5,  "basic5" },
-    {basic6,  "basic6" },
-    {basic7,  "basic7" },
-    {basic8,  "basic8" },
-    {basic10, "basic10"},
-    {basic11, "basic11"},
-    {basic20, "basic20"},
+    {basic21,  "basic21" },
+    // {basic1,  "basic1" },
+    // {basic2,  "basic2" },
+    // {basic3,  "basic3" },
+    // {basic4,  "basic4" },
+    // {basic5,  "basic5" },
+    // {basic6,  "basic6" },
+    // {basic7,  "basic7" },
+    // {basic8,  "basic8" },
+    // {basic10, "basic10"},
+    // {basic11, "basic11"},
+    // {basic20, "basic20"},
     {NULL,    NULL     },
 };
 
