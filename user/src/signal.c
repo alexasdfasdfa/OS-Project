@@ -7,7 +7,8 @@ struct test {
     void (*f)(char *);
     char *s;
 } signaltests[] = {
-    {basic21,  "basic21" },
+    // {basic21,  "basic21" },
+    {basic22, "basic22"},
     // {basic1,  "basic1" },
     // {basic2,  "basic2" },
     // {basic3,  "basic3" },

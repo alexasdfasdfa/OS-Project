@@ -36,6 +36,34 @@ void basic21(char* s) {
     }
 }
 
+void sigchld_handler(int signo, siginfo_t* info, void* context) {
+    assert(signo == SIGCHLD);
+    printf("Received SIGCHLD from pid %d, exit code %d\n", info->si_pid, info->si_code);
+    while (wait(-1, NULL) > 0); // 循环回收所有子进程
+}
+
+void basic22() {
+    // 注册SIGCHLD处理函数
+
+    int pid = fork();
+    if (pid == 0) {
+        // 子进程立即退出
+        printf("Child exiting\n");
+        exit(0);
+    } else {
+        sigaction_t sa = {
+            .sa_sigaction = sigchld_handler,
+            .sa_restorer  = sigreturn,
+        };
+        sigemptyset(&sa.sa_mask);          // 清空信号屏蔽字
+        sigaction(SIGCHLD, &sa, 0);
+        // 父进程不主动调用wait，等待信号触发
+        sleep(1); // 等待信号处理
+        printf("Parent continues\n");
+    }
+
+}
+
 // Base Checkpoint 1: sigaction, sigkill, and sigreturn
 
 // send SIGUSR0 to a child process, which default action is to terminate it.

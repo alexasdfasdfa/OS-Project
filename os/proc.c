@@ -319,7 +319,9 @@ void exit(int code) {
     if (p == init_proc) {
         panic("init process exited");
     }
-
+    if (p->parent && p->parent->state != UNUSED) {
+        sys_sigkill(p->parent->pid, SIGCHLD, code);
+    }
     acquire(&wait_lock);
 
     int wakeinit = 0;
@@ -370,6 +372,9 @@ int kill(int pid) {
                 // Wake process from sleep().
                 p->state = RUNNABLE;
                 add_task(p);
+                if (p->parent && p->parent->state != UNUSED) {
+                    sys_sigkill(p->parent->pid, SIGCHLD, p->exit_code);
+                }
             }
             release(&p->lock);
             return 0;

@@ -62,7 +62,7 @@ int do_signal(void) {
                     break;
                 }
 
-                if (sa->sa_sigaction == SIG_IGN) {
+                if (sa->sa_sigaction == SIG_IGN || ( sig==SIGCHLD && sa->sa_sigaction==SIG_DFL)) {
                     sigdelset(&p->signal.sigpending, sig);
                 } else if (sa->sa_sigaction == SIG_DFL) {
                     setkilled(p,-10-sig);
@@ -279,12 +279,17 @@ int sys_sigkill(int pid, int signo, int code) {
             }
             //set siginfo
             //default:si_code=0 si_status=0 addr=0
-            p->signal.siginfos[signo].si_code=0;
+            p->signal.siginfos[signo].si_code=code;
             p->signal.siginfos[signo].si_status=0;
             p->signal.siginfos[signo].addr=0;
             p->signal.siginfos[signo].si_signo=signo;
             p->signal.siginfos[signo].si_pid=sender_pid;
             sigaddset(&p->signal.sigpending, signo);
+            // ...原有代码...
+            // p->signal.siginfos[signo].si_code = code;  // 退出代码或信号值
+            // p->signal.siginfos[signo].si_signo = signo;
+            // p->signal.siginfos[signo].si_pid = sender_pid;
+            // ...原有代码...
             break;
             // sigaction_t *sa =&p->signal.sa[signo];
             // if (sa->sa_sigaction == SIG_IGN) {
