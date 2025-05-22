@@ -32,7 +32,7 @@ int siginit_fork(struct proc *parent, struct proc *child) {
 
     child->signal.sigmask = parent->signal.sigmask;
     sigemptyset(&child->signal.sigpending);
-
+ 
     memset(child->signal.siginfos, 0, sizeof(siginfo_t) * (SIGMAX + 1));
 
     return 0;
