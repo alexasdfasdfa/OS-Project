@@ -43,7 +43,7 @@ struct cpu {
     int cpuid;                     // for debug purpose
 };
 
-enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING, ZOMBIE };
+enum procstate { UNUSED, USED, SLEEPING, RUNNABLE, RUNNING,STOPPED, ZOMBIE };
 
 extern struct proc *pool[];
 

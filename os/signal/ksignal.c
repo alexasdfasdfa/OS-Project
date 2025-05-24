@@ -49,19 +49,31 @@ int do_signal(void) {
     if (!p->signal.sigpending) return 0;
 
     // 遍历所有可能的信号
+    
     for (int sig = SIGMIN; sig <= SIGMAX; sig++) {
         if (sigismember(&p->signal.sigpending, sig)){
-
+            
         
-            if(sig == SIGKILL || sig == SIGSTOP || !sigismember(&p->signal.sigmask, sig)) {
+            if(sig == SIGKILL || sig == SIGSTOP ||sig == SIGCONT|| !sigismember(&p->signal.sigmask, sig)) {
                 sigaction_t *sa = &p->signal.sa[sig];
             
-                if (sig == SIGKILL || sig == SIGSTOP) {
+                if (sig == SIGKILL) {
                     setkilled(p, -10 - sig);
                     sigdelset(&p->signal.sigpending, sig);
                     break;
                 }
-
+                if (sig == SIGSTOP) {
+                    if (p->state != STOPPED) {
+                        p->state = STOPPED;
+                        sigdelset(&p->signal.sigpending, sig);
+                        acquire(&p->lock);
+                        p->state = STOPPED;
+                        sched();
+                        release(&p->lock);
+                        // stopped = true;
+                    }
+                    break;
+                }
                 if (sa->sa_sigaction == SIG_IGN || ( sig==SIGCHLD && sa->sa_sigaction==SIG_DFL)) {
                     sigdelset(&p->signal.sigpending, sig);
                 } else if (sa->sa_sigaction == SIG_DFL) {
@@ -117,7 +129,7 @@ int do_signal(void) {
                     tf->epc = (uint64)sa->sa_sigaction;
                     tf->a0 = sig;
                     tf->a1 = (uint64)info_addr;
-                    tf->a2 = (uint64)&uc_addr;
+                    tf->a2 = (uint64)uc_addr;
                     tf->ra=(uint64)sa->sa_restorer;
                     tf->sp=uc_addr;
                     siginfo_t siginfo=p->signal.siginfos[sig];
@@ -131,6 +143,7 @@ int do_signal(void) {
                     sigset_t blocked = sa->sa_mask | sigmask(sig); // 当前信号 + sa_mask
                     p->signal.sigmask |= blocked;
                     sigdelset(&p->signal.sigpending, sig);
+                    
                 }
                 break;
             }
@@ -285,11 +298,17 @@ int sys_sigkill(int pid, int signo, int code) {
             p->signal.siginfos[signo].si_signo=signo;
             p->signal.siginfos[signo].si_pid=sender_pid;
             sigaddset(&p->signal.sigpending, signo);
-            // ...原有代码...
-            // p->signal.siginfos[signo].si_code = code;  // 退出代码或信号值
-            // p->signal.siginfos[signo].si_signo = signo;
-            // p->signal.siginfos[signo].si_pid = sender_pid;
-            // ...原有代码...
+
+            if (signo == SIGCONT) {
+                if (p->state == STOPPED) {
+                    p->state = RUNNABLE;
+                    acquire(&p->lock);
+                    add_task(p);
+                    release(&p->lock);
+                    sigdelset(&p->signal.sigpending, signo);
+                    yield();
+                }
+            }
             break;
             
         }

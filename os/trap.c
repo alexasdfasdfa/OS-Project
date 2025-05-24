@@ -145,7 +145,8 @@ static void handle_pgfault(void) {
             return;
         }
     }else{
-        sigkill(getpid(), SIGSEGV, 0); 
+        printf("yuyuu\n");
+        sys_sigkill(p->pid, SIGSEGV, 0); 
         return;
     }
     // otherwise, it is a page fault due to invalid address

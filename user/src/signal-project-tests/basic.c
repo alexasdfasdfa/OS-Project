@@ -426,10 +426,47 @@ void basic20(char *s) {
     }
 }
 
-// volatile void *fault_addr;
-// void *mapped_addr;
-// void segv_handler(int signo, siginfo_t* info, void* ctx2){
-//     fault_addr = info->addr;
+volatile uint64 fault_addr;
 
-//     struct ucontext *uc = (struct ucontext *)ctx2;
-// }
+void sigsegv_handler(int signo, siginfo_t *info, void *ctx) {
+    fault_addr = (uint64)info->addr;
+    struct ucontext* uc =(struct ucontext*) ctx;
+    for (int i=0;i<32;i++){
+        if(uc->uc_mcontext.regs[i]==fault_addr){
+            uc->uc_mcontext.regs[i]=0x12345678;
+            return;
+        }
+    }
+    
+}
+
+void basic31(char* s) {
+    sigaction_t sa = {
+        .sa_sigaction = SIG_IGN,
+        .sa_restorer  = NULL,
+    };
+    sigaction(SIGSTOP, &sa, 0);
+
+    sigaction_t sa2 = {
+        .sa_sigaction = SIG_IGN,
+        .sa_restorer  = NULL,
+    };
+    sigaction(SIGCONT, &sa2, 0);
+
+    int pid = fork();
+    if (pid == 0) {
+        printf("stop myself\n");
+        sigkill(getpid(), SIGSTOP, 0);
+        printf("running again\n");
+        exit(1);
+    } else {
+        // parent
+        
+        sleep(100);
+        sigkill(pid, SIGCONT, 0);
+
+        int ret;
+        wait(0, &ret);
+        assert(ret == 1);
+    }
+}
